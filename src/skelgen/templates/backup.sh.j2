@@ -1,0 +1,139 @@
+{# Backup script template #}
+{{ shebang }}
+#
+# {{ script_name }}
+# {{ description }}
+#
+# Author: {{ author or 'Your Name' }}
+# Version: {{ version }}
+# License: MIT
+#
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+readonly SOURCE_DIR="${SOURCE_DIR:-}"
+readonly BACKUP_DIR="${BACKUP_DIR:-/backups}"
+readonly RETENTION_DAYS="${RETENTION_DAYS:-30}"
+readonly COMPRESS="${COMPRESS:-true}"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_info()  { printf '%s [INFO]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+log_warn()  { printf '%s [WARN]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log_error() { printf '%s [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+
+die() { log_error "$*"; exit 1; }
+
+cleanup() {
+    local exit_code=$?
+    # Remove temporary files if any
+    exit ${exit_code}
+}
+trap cleanup EXIT
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: {{ script_name }} [OPTIONS]
+
+{{ description }}
+
+Options:
+  -s, --source DIR    Source directory to backup
+  -d, --dest DIR      Destination directory (default: /backups)
+  --no-compress       Disable compression
+  --retention N       Retention in days (default: 30)
+  -h, --help          Show this help message and exit
+  -v, --version       Show version and exit
+
+Examples:
+  {{ script_name }} --source /data --dest /backups/data
+  {{ script_name }} --retention 7 --no-compress
+
+Version: {{ version }}
+EOF
+}
+
+version() { echo "{{ script_name }} {{ version }}"; }
+
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
+backup() {
+    local src="${1}"
+    local dest="${2}"
+    local compress="${3}"
+    local retention="${4}"
+
+    [[ -z "${src}" ]] && die "Source directory not set. Use --source or set SOURCE_DIR."
+    [[ ! -d "${src}" ]] && die "Source directory does not exist: ${src}"
+
+    mkdir -p "${dest}"
+
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_name="backup_${timestamp}"
+
+    if [[ "${compress}" == true ]]; then
+        backup_name="${backup_name}.tar.gz"
+        tar -czf "${dest}/${backup_name}" -C "$(dirname "${src}")" "$(basename "${src}")"
+    else
+        backup_name="${backup_name}"
+        cp -a "${src}" "${dest}/${backup_name}"
+    fi
+
+    log_info "Backup created: ${dest}/${backup_name}"
+
+    # Cleanup old backups
+    find "${dest}" -maxdepth 1 -name 'backup_*' -type f -mtime +${retention} -delete
+    find "${dest}" -maxdepth 1 -name 'backup_*' -type d -mtime +${retention} -exec rm -rf {} +
+    log_info "Removed backups older than ${retention} days"
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+main() {
+    local src="${SOURCE_DIR}"
+    local dest="${BACKUP_DIR}"
+    local compress="${COMPRESS}"
+    local retention="${RETENTION_DAYS}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -v|--version) version; exit 0 ;;
+            -s|--source)
+                src="${2:-}"
+                shift 2 || die "Missing value for --source"
+                ;;
+            -d|--dest)
+                dest="${2:-}"
+                shift 2 || die "Missing value for --dest"
+                ;;
+            --no-compress)
+                compress=false
+                shift
+                ;;
+            --retention)
+                retention="${2:-}"
+                shift 2 || die "Missing value for --retention"
+                ;;
+            --) shift; break ;;
+            -*) die "Unknown option: $1" ;;
+            *) die "Unexpected argument: $1" ;;
+        esac
+    done
+
+    backup "${src}" "${dest}" "${compress}" "${retention}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

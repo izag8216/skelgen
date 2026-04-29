@@ -1,0 +1,146 @@
+{# Service/daemon script template #}
+{{ shebang }}
+#
+# {{ script_name }}
+# {{ description }}
+#
+# Usage: {{ script_name }} {start|stop|restart|status|logs}
+#
+# Author: {{ author or 'Your Name' }}
+# Version: {{ version }}
+# License: MIT
+#
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+readonly SERVICE_NAME="{{ script_name }}"
+readonly PIDFILE="${PIDFILE:-/tmp/${SERVICE_NAME}.pid}"
+readonly LOGFILE="${LOGFILE:-/tmp/${SERVICE_NAME}.log}"
+readonly COMMAND="${COMMAND:-}"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_info()  { printf '%s [INFO]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+log_warn()  { printf '%s [WARN]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log_error() { printf '%s [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+
+die() { log_error "$*"; exit 1; }
+
+cleanup() {
+    local exit_code=$?
+    [[ -f "${PIDFILE}" ]] && rm -f "${PIDFILE}"
+    exit ${exit_code}
+}
+trap cleanup EXIT INT TERM
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: {{ script_name }} {start|stop|restart|status|logs}
+
+Manage the ${SERVICE_NAME} service.
+
+Commands:
+  start     Start the service in the background
+  stop      Stop the running service
+  restart   Restart the service
+  status    Show service status (running/pid)
+  logs      Tail the service log file
+
+Options:
+  -h, --help      Show this help message and exit
+  -v, --version   Show version and exit
+
+Version: {{ version }}
+EOF
+}
+
+version() { echo "{{ script_name }} {{ version }}"; }
+
+# ---------------------------------------------------------------------------
+# Service functions
+# ---------------------------------------------------------------------------
+service_start() {
+    if [[ -f "${PIDFILE}" ]] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+        log_warn "${SERVICE_NAME} is already running (PID $(cat "${PIDFILE}"))"
+        return 0
+    fi
+
+    if [[ -z "${COMMAND}" ]]; then
+        die "COMMAND not set. Define it at the top of this script."
+    fi
+
+    nohup bash -c "${COMMAND}" >> "${LOGFILE}" 2>&1 &
+    echo $! > "${PIDFILE}"
+    log_info "${SERVICE_NAME} started (PID $(cat "${PIDFILE}"))"
+}
+
+service_stop() {
+    if [[ ! -f "${PIDFILE}" ]]; then
+        log_warn "${SERVICE_NAME} is not running"
+        return 0
+    fi
+
+    local pid
+    pid=$(cat "${PIDFILE}")
+    if kill -0 "${pid}" 2>/dev/null; then
+        kill "${pid}" && log_info "${SERVICE_NAME} stopped (PID ${pid})"
+    else
+        log_warn "PID ${pid} not found, removing stale pidfile"
+    fi
+    rm -f "${PIDFILE}"
+}
+
+service_status() {
+    if [[ -f "${PIDFILE}" ]] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+        echo "${SERVICE_NAME}: running (PID $(cat "${PIDFILE}"))"
+    else
+        echo "${SERVICE_NAME}: not running"
+    fi
+}
+
+service_logs() {
+    if [[ -f "${LOGFILE}" ]]; then
+        tail -f "${LOGFILE}"
+    else
+        die "Log file not found: ${LOGFILE}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+main() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -v|--version) version; exit 0 ;;
+            --) shift; break ;;
+            -*) die "Unknown option: $1" ;;
+            *) break ;;
+        esac
+    done
+
+    local cmd="${1:-}"
+    shift || true
+
+    case "${cmd}" in
+        start)   service_start "$@" ;;
+        stop)    service_stop "$@" ;;
+        restart) service_stop && sleep 1 && service_start "$@" ;;
+        status)  service_status ;;
+        logs)    service_logs ;;
+        "") usage; die "Command required" ;;
+        *) die "Unknown command: ${cmd}" ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

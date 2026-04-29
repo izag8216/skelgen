@@ -1,0 +1,181 @@
+{# API Service wrapper template #}
+{{ shebang }}
+#
+# {{ script_name }}
+# {{ description }}
+#
+# Usage: {{ script_name }} {start|stop|restart|status|configtest}
+#
+# Author: {{ author or 'Your Name' }}
+# Version: {{ version }}
+# License: MIT
+#
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+readonly APP_NAME="{{ script_name }}"
+readonly APP_PORT="${APP_PORT:-8080}"
+readonly APP_HOST="${APP_HOST:-127.0.0.1}"
+readonly APP_USER="${APP_USER:-$(whoami)}"
+readonly APP_DIR="${APP_DIR:-$(pwd)}"
+readonly PIDFILE="${PIDFILE:-/tmp/${APP_NAME}.pid}"
+readonly LOGFILE="${LOGFILE:-/tmp/${APP_NAME}.log}"
+readonly WORKERS="${WORKERS:-4}"
+
+# Command to run the API service
+readonly START_COMMAND="${START_COMMAND:-cd ${APP_DIR} && python -m http.server ${APP_PORT} --bind ${APP_HOST}}"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_info()  { printf '%s [INFO]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+log_warn()  { printf '%s [WARN]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log_error() { printf '%s [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+
+die() { log_error "$*"; exit 1; }
+
+cleanup() {
+    local exit_code=$?
+    [[ ${exit_code} -ne 0 && -f "${PIDFILE}" ]] && rm -f "${PIDFILE}"
+    exit ${exit_code}
+}
+trap cleanup EXIT INT TERM
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: {{ script_name }} {start|stop|restart|status|configtest}
+
+Manage the ${APP_NAME} API service.
+
+Commands:
+  start       Start the API service
+  stop        Stop the running service
+  restart     Restart the service
+  status      Show service status
+  configtest  Validate configuration
+
+Options:
+  -h, --help      Show this help message and exit
+  -v, --version   Show version and exit
+
+Configuration:
+  APP_PORT=${APP_PORT}
+  APP_HOST=${APP_HOST}
+  APP_DIR=${APP_DIR}
+  WORKERS=${WORKERS}
+
+Version: {{ version }}
+EOF
+}
+
+version() { echo "{{ script_name }} {{ version }}"; }
+
+# ---------------------------------------------------------------------------
+# Service functions
+# ---------------------------------------------------------------------------
+service_start() {
+    if [[ -f "${PIDFILE}" ]] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+        log_warn "${APP_NAME} is already running (PID $(cat "${PIDFILE}"))"
+        return 0
+    fi
+
+    log_info "Starting ${APP_NAME} on ${APP_HOST}:${APP_PORT}"
+
+    # Export config as env vars
+    export APP_PORT APP_HOST APP_DIR WORKERS
+
+    nohup bash -c "${START_COMMAND}" >> "${LOGFILE}" 2>&1 &
+    echo $! > "${PIDFILE}"
+
+    sleep 1
+    if kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+        log_info "${APP_NAME} started (PID $(cat "${PIDFILE}"))"
+    else
+        die "Failed to start ${APP_NAME}"
+    fi
+}
+
+service_stop() {
+    if [[ ! -f "${PIDFILE}" ]]; then
+        log_warn "${APP_NAME} is not running"
+        return 0
+    fi
+
+    local pid
+    pid=$(cat "${PIDFILE}")
+    if kill -0 "${pid}" 2>/dev/null; then
+        kill "${pid}" && log_info "${APP_NAME} stopped (PID ${pid})"
+    else
+        log_warn "Stale pidfile removed"
+    fi
+    rm -f "${PIDFILE}"
+}
+
+service_status() {
+    if [[ -f "${PIDFILE}" ]] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+        echo "${APP_NAME}: running (PID $(cat "${PIDFILE}"))"
+        echo "  Host: ${APP_HOST}:${APP_PORT}"
+        echo "  Log:  ${LOGFILE}"
+    else
+        echo "${APP_NAME}: not running"
+    fi
+}
+
+configtest() {
+    local errors=0
+
+    if [[ -z "${START_COMMAND}" ]]; then
+        log_error "START_COMMAND is not set"
+        errors=$((errors + 1))
+    fi
+
+    if ! [[ "${APP_PORT}" =~ ^[0-9]+$ ]]; then
+        log_error "APP_PORT must be a number"
+        errors=$((errors + 1))
+    fi
+
+    if [[ ${errors} -eq 0 ]]; then
+        log_info "Configuration OK"
+        return 0
+    else
+        die "Configuration test failed with ${errors} error(s)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+main() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -v|--version) version; exit 0 ;;
+            --) shift; break ;;
+            -*) die "Unknown option: $1" ;;
+            *) break ;;
+        esac
+    done
+
+    local cmd="${1:-}"
+    shift || true
+
+    case "${cmd}" in
+        start)       service_start "$@" ;;
+        stop)        service_stop "$@" ;;
+        restart)     service_stop && sleep 1 && service_start "$@" ;;
+        status)      service_status ;;
+        configtest)  configtest ;;
+        "") usage; die "Command required" ;;
+        *) die "Unknown command: ${cmd}" ;;
+    esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

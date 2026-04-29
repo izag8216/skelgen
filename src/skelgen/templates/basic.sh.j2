@@ -1,0 +1,197 @@
+{# Basic shell script skeleton template - works for bash/sh/zsh #}
+{{ shebang }}
+#
+# {{ script_name }}
+# {{ description }}
+#
+# Author: {{ author or 'Your Name' }}
+# Version: {{ version }}
+# License: MIT
+#
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
+readonly SCRIPT_DIR
+
+# ---------------------------------------------------------------------------
+# Logging functions
+# ---------------------------------------------------------------------------
+log_info()  { printf '%s [INFO]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+log_warn()  { printf '%s [WARN]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log_error() { printf '%s [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+die() {
+    log_error "$*"
+    exit 1
+}
+
+cleanup() {
+    local exit_code=$?
+    # Add cleanup tasks here
+    exit ${exit_code}
+}
+trap cleanup EXIT
+
+# ---------------------------------------------------------------------------
+# Help text
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: {{ script_name }}{% if args_raw %} [OPTIONS]{% endif %}{% if positional_args %} {% for a in positional_args %}<{{ a.name }}>{% if not loop.last %} {% endif %}{% endfor %}{% endif %}
+
+{{ description }}
+
+Options:
+  -h, --help      Show this help message and exit
+  -v, --version   Show version and exit
+{% for f in flags %}
+  --{{ f.name }}       {{ f.name|capitalize }} flag
+{% endfor %}
+{% for o in options %}
+  --{{ o.name }}=VALUE  {{ o.name|capitalize }} option
+{% endfor %}
+{% for p in positional_args %}
+  <{{ p.name }}>     {{ p.name|capitalize }} argument
+{% endfor %}
+
+Examples:
+  {{ script_name }}{% if positional_args %} {% for p in positional_args %}value{% if not loop.last %} {% endif %}{% endfor %}{% endif %}
+  {{ script_name }} --help
+
+Author: {{ author or 'Your Name' }}
+Version: {{ version }}
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Version
+# ---------------------------------------------------------------------------
+version() {
+    echo "{{ script_name }} {{ version }}"
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+parse_args() {
+{% if positional_args %}
+    # Positional arguments
+{% for p in positional_args %}
+    local {{ p.name }}=""
+{% endfor %}
+{% endif %}
+{% if flags %}
+    # Flags
+{% for f in flags %}
+    local {{ f.name }}=false
+{% endfor %}
+{% endif %}
+{% if options %}
+    # Options
+{% for o in options %}
+    local {{ o.name }}="{{ o.default or '' }}"
+{% endfor %}
+{% endif %}
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                version
+                exit 0
+                ;;
+{% for f in flags %}
+            --{{ f.name }})
+                {{ f.name }}=true
+                shift
+                ;;
+{% endfor %}
+{% for o in options %}
+            --{{ o.name }}=*)
+                {{ o.name }}="${1#*=}"
+                shift
+                ;;
+{% endfor %}
+            --)
+                shift
+                break
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+{% if positional_args %}
+{% for p in positional_args %}
+{% if loop.first %}
+                if [[ -z "${{ p.name }}" ]]; then
+                    {{ p.name }}="$1"
+{% elif loop.last %}
+                elif [[ -z "${{ p.name }}" ]]; then
+                    {{ p.name }}="$1"
+                else
+                    die "Unexpected argument: $1"
+                fi
+{% else %}
+                elif [[ -z "${{ p.name }}" ]]; then
+                    {{ p.name }}="$1"
+{% endif %}
+{% endfor %}
+{% if positional_args | length == 1 %}
+                else
+                    die "Unexpected argument: $1"
+                fi
+{% endif %}
+{% else %}
+                die "Unexpected argument: $1"
+{% endif %}
+                shift
+                ;;
+        esac
+    done
+
+    # Validate required positional arguments
+{% for p in positional_args %}
+    if [[ -z "${{ p.name }}" ]]; then
+        die "Missing required argument: <{{ p.name }}>"
+    fi
+{% endfor %}
+}
+
+# ---------------------------------------------------------------------------
+# Main logic
+# ---------------------------------------------------------------------------
+main() {
+    parse_args "$@"
+
+    log_info "Starting {{ script_name }} v{{ version }}"
+
+    # TODO: Add your script logic here
+    {% if positional_args %}{% for p in positional_args %}
+    log_info "{{ p.name }} = ${{ p.name }}"
+    {% endfor %}{% endif %}
+    {% if flags %}{% for f in flags %}
+    log_info "{{ f.name }} = ${{ f.name }}"
+    {% endfor %}{% endif %}
+    {% if options %}{% for o in options %}
+    log_info "{{ o.name }} = ${{ o.name }}"
+    {% endfor %}{% endif %}
+
+    log_info "Done."
+}
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

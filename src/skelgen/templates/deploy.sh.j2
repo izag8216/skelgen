@@ -1,0 +1,165 @@
+{# Deploy script template #}
+{{ shebang }}
+#
+# {{ script_name }}
+# {{ description }}
+#
+# Usage: {{ script_name }} [OPTIONS]
+#
+# Author: {{ author or 'Your Name' }}
+# Version: {{ version }}
+# License: MIT
+#
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+readonly DEPLOY_DIR="${DEPLOY_DIR:-/opt/app}"
+readonly BACKUP_DIR="${BACKUP_DIR:-/opt/backups}"
+readonly MAX_BACKUPS="${MAX_BACKUPS:-5}"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_info()  { printf '%s [INFO]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+log_warn()  { printf '%s [WARN]  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+log_error() { printf '%s [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+
+die() { log_error "$*"; exit 1; }
+
+cleanup() {
+    local exit_code=$?
+    # Rollback on failure if a backup exists
+    if [[ ${exit_code} -ne 0 && -n "${ROLLBACK_BACKUP:-}" && -d "${ROLLBACK_BACKUP}" ]]; then
+        log_warn "Deployment failed. Rolling back..."
+        rm -rf "${DEPLOY_DIR}"
+        cp -a "${ROLLBACK_BACKUP}" "${DEPLOY_DIR}"
+        log_info "Rollback complete."
+    fi
+    exit ${exit_code}
+}
+trap cleanup EXIT
+
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Usage: {{ script_name }} [OPTIONS]
+
+{{ description }}
+
+Options:
+  -e, --env ENV       Target environment (default: production)
+  -t, --tag TAG       Git tag or version to deploy
+  -f, --force         Skip confirmation prompts
+  --dry-run           Show what would be done without executing
+  -h, --help          Show this help message and exit
+  -v, --version       Show version and exit
+
+Examples:
+  {{ script_name }} --env staging --tag v1.2.3
+  {{ script_name }} --dry-run
+
+Version: {{ version }}
+EOF
+}
+
+version() { echo "{{ script_name }} {{ version }}"; }
+
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
+confirm() {
+    local msg="${1:-Are you sure?}"
+    local response
+    read -r -p "${msg} [y/N] " response
+    [[ "${response}" =~ ^[Yy]$ ]]
+}
+
+create_backup() {
+    if [[ -d "${DEPLOY_DIR}" ]]; then
+        local timestamp
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        local backup_path="${BACKUP_DIR}/backup_${timestamp}"
+        mkdir -p "${BACKUP_DIR}"
+        cp -a "${DEPLOY_DIR}" "${backup_path}"
+        ROLLBACK_BACKUP="${backup_path}"
+        log_info "Backup created: ${backup_path}"
+
+        # Retention: keep only last N backups
+        ls -1t "${BACKUP_DIR}" | tail -n +$((MAX_BACKUPS + 1)) | while read -r f; do
+            rm -rf "${BACKUP_DIR}/${f}"
+        done
+    fi
+}
+
+deploy() {
+    local env="${1:-production}"
+    local tag="${2:-}"
+    local dry_run="${3:-false}"
+    local force="${4:-false}"
+
+    log_info "Deploying to ${env}"
+    [[ -n "${tag}" ]] && log_info "Version: ${tag}"
+
+    if [[ "${dry_run}" == true ]]; then
+        log_info "[DRY RUN] Would create backup"
+        log_info "[DRY RUN] Would deploy to ${DEPLOY_DIR}"
+        return 0
+    fi
+
+    if [[ "${force}" != true ]]; then
+        confirm "Deploy to ${env}${tag:+ (tag=${tag})}?" || die "Aborted."
+    fi
+
+    create_backup
+
+    # TODO: Add your actual deploy steps here
+    mkdir -p "${DEPLOY_DIR}"
+    log_info "Deployment complete."
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+main() {
+    local env="production"
+    local tag=""
+    local dry_run=false
+    local force=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -v|--version) version; exit 0 ;;
+            -e|--env)
+                env="${2:-}"
+                shift 2 || die "Missing value for --env"
+                ;;
+            -t|--tag)
+                tag="${2:-}"
+                shift 2 || die "Missing value for --tag"
+                ;;
+            -f|--force)
+                force=true
+                shift
+                ;;
+            --dry-run)
+                dry_run=true
+                shift
+                ;;
+            --) shift; break ;;
+            -*) die "Unknown option: $1" ;;
+            *) die "Unexpected argument: $1" ;;
+        esac
+    done
+
+    deploy "${env}" "${tag}" "${dry_run}" "${force}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
