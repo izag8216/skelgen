@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/header.svg" alt="skelgen header" width="100%" style="max-width: 800px;"/>
+  <img src="https://raw.githubusercontent.com/izag8216/skelgen/main/assets/header.svg" alt="skelgen header" width="100%"/>
 </p>
 
 <h1 align="center">skelgen</h1>

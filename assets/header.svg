@@ -1,21 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="100%">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1"/>
-      <stop offset="50%" style="stop-color:#1e293b;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1"/>
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
     <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1"/>
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
 
   <rect width="800" height="200" rx="12" fill="url(#bgGrad)"/>
@@ -29,7 +22,7 @@
     <line x1="600" y1="0" x2="600" y2="200"/>
   </g>
 
-  <g fill="none" stroke="url(#accentGrad)" stroke-width="2" stroke-linecap="round" filter="url(#glow)">
+  <g fill="none" stroke="url(#accentGrad)" stroke-width="2" stroke-linecap="round">
     <path d="M 60 80 L 100 80 L 120 60 L 160 60"/>
     <path d="M 60 100 L 90 100 L 110 120 L 150 120"/>
     <path d="M 60 120 L 80 120 L 100 140 L 140 140"/>
@@ -51,9 +44,7 @@
     <rect x="14" y="100" width="50" height="6" rx="3" fill="#8b5cf6" opacity="0.6"/>
     <rect x="14" y="114" width="90" height="6" rx="3" fill="#334155"/>
     <rect x="14" y="128" width="70" height="6" rx="3" fill="#06b6d4" opacity="0.6"/>
-    <rect x="14" y="142" width="8" height="12" rx="1" fill="#06b6d4" opacity="0.8">
-      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite"/>
-    </rect>
+    <rect x="14" y="142" width="8" height="12" rx="1" fill="#06b6d4" opacity="0.8"/>
   </g>
 
   <g transform="translate(690, 80)" stroke="#334155" stroke-width="2" fill="none">
