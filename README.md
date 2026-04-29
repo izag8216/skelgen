@@ -1,4 +1,4 @@
-![skelgen header](https://raw.githubusercontent.com/izag8216/skelgen/main/assets/header.svg)
+![skelgen header](assets/header.png)
 
 <h1 align="center">skelgen</h1>
 
