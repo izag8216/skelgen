@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/izag8216/skelgen/main/assets/header.svg" alt="skelgen header" width="100%"/>
-</p>
+![skelgen header](https://raw.githubusercontent.com/izag8216/skelgen/main/assets/header.svg)
 
 <h1 align="center">skelgen</h1>
 
